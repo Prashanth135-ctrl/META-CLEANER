@@ -1,74 +1,66 @@
 import os
+import ffmpeg
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
-import piexif
+from PIL import Image
 
-def remove_metadata(input_path):
+def remove_image_metadata(input_path):
+    """Removes metadata from an image."""
     try:
-        image = Image.open(input_path)
+        img = Image.open(input_path)
+        img_data = list(img.getdata())  # Extract pixel data
 
-        # Remove metadata
-        exif_data = piexif.load(image.info.get("exif", b""))
-        exif_data["Exif"] = {}
-
+        clean_img = Image.new(img.mode, img.size)
+        clean_img.putdata(img_data)  # Save without metadata
+        
         output_path = "cleaned_" + os.path.basename(input_path)
-        image.save(output_path, exif=piexif.dump(exif_data))
-
-        messagebox.showinfo("Success", f"✅ Metadata removed!\nSaved as: {output_path}")
-        return output_path
-
+        clean_img.save(output_path, format=img.format, exif=b"")
+        
+        messagebox.showinfo("Success", f"Metadata removed! Saved as: {output_path}")
     except Exception as e:
-        messagebox.showerror("Error", f"❌ Failed to remove metadata: {e}")
-        return None
+        messagebox.showerror("Error", f"Failed to clean image: {str(e)}")
 
-def select_image():
-    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg;*.jpeg;*.png")])
-    
+def remove_video_metadata(input_path):
+    """Removes metadata from a video using FFmpeg."""
+    try:
+        output_path = "cleaned_" + os.path.basename(input_path)
+        
+        (
+            ffmpeg
+            .input(input_path)
+            .output(output_path, map_metadata=-1, codec="copy")
+            .run(overwrite_output=True, quiet=True)
+        )
+        
+        messagebox.showinfo("Success", f"Metadata removed! Saved as: {output_path}")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to clean video: {str(e)}")
+
+def select_file():
+    """Opens file dialog to select an image or video."""
+    file_path = filedialog.askopenfilename(title="Select an Image or Video",
+                                           filetypes=[("Images", "*.jpg;*.jpeg;*.png"),
+                                                      ("Videos", "*.mp4;*.mov;*.avi;*.mkv"),
+                                                      ("All Files", "*.*")])
     if file_path:
-        img = Image.open(file_path)
-        img.thumbnail((300, 300))
-        img = ImageTk.PhotoImage(img)
+        file_ext = os.path.splitext(file_path)[1].lower()
         
-        img_label.config(image=img)
-        img_label.image = img
+        if file_ext in [".jpg", ".jpeg", ".png"]:
+            remove_image_metadata(file_path)
+        elif file_ext in [".mp4", ".mov", ".avi", ".mkv"]:
+            remove_video_metadata(file_path)
+        else:
+            messagebox.showerror("Error", "Unsupported file format!")
 
-        global selected_file
-        selected_file = file_path
-
-def clean_image():
-    if not selected_file:
-        messagebox.showwarning("Warning", "⚠️ Please select an image first!")
-        return
-
-    cleaned_path = remove_metadata(selected_file)
-
-    if cleaned_path:
-        img = Image.open(cleaned_path)
-        img.thumbnail((300, 300))
-        img = ImageTk.PhotoImage(img)
-        
-        cleaned_img_label.config(image=img)
-        cleaned_img_label.image = img
-
-# Create GUI window
+# GUI Setup
 root = tk.Tk()
-root.title("Instagram Metadata Cleaner")
-root.geometry("500x500")
+root.title("Meta Cleaner")
+root.geometry("400x200")
 
-# Labels
-tk.Label(root, text="Original Image:").pack()
-img_label = tk.Label(root)
-img_label.pack()
+label = tk.Label(root, text="Select a file to remove metadata", font=("Arial", 12))
+label.pack(pady=20)
 
-tk.Label(root, text="Cleaned Image:").pack()
-cleaned_img_label = tk.Label(root)
-cleaned_img_label.pack()
+select_button = tk.Button(root, text="Choose File", command=select_file, font=("Arial", 12), bg="blue", fg="white")
+select_button.pack(pady=10)
 
-# Buttons
-selected_file = None
-tk.Button(root, text="Select Image", command=select_image).pack(pady=10)
-tk.Button(root, text="Remove Metadata", command=clean_image).pack(pady=10)
-
-# Run the application
 root.mainloop()
